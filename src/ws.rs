@@ -10,9 +10,9 @@ pub struct ServerMessage {
     pub msg: String,
 }
 
-pub fn create_ws_signal(cx: Scope) -> ReadSignal<Option<ServerMessage>> {
-    let (get, set) = create_signal(cx, None);
-    create_server_ws_signal(cx, set);
+pub fn create_ws_signal() -> ReadSignal<Option<ServerMessage>> {
+    let (get, set) = create_signal(None);
+    create_server_ws_signal(set);
 
     get
 }
@@ -21,12 +21,12 @@ use js_sys::{Function, JsString};
 use wasm_bindgen::{prelude::Closure, JsCast, JsValue};
 use web_sys::{MessageEvent, WebSocket};
 
-fn create_server_ws_signal(cx: Scope, set: WriteSignal<Option<ServerMessage>>) {
-    let ws = use_context::<ServerWS>(cx);
+fn create_server_ws_signal(set: WriteSignal<Option<ServerMessage>>) {
+    let ws = use_context::<ServerWS>();
 
     match ws {
         Some(ServerWS(ws)) => {
-            create_effect(cx, move |_| {
+            create_effect(move |_| {
                 let callback = Closure::wrap(Box::new(move |event: MessageEvent| {
                     log::info!("Received a message from the server!");
                     let ws_string = event
@@ -53,7 +53,7 @@ fn create_server_ws_signal(cx: Scope, set: WriteSignal<Option<ServerMessage>>) {
             });
         }
         None => {
-            leptos::error!(r#"No websocket provided at root of app"#);
+            leptos::logging::error!(r#"No websocket provided at root of app"#);
         }
     }
 }
@@ -77,8 +77,8 @@ where
     }
 }
 
-pub fn send_msg(cx: Scope, msg: &str) -> Result<(), ()> {
-    let ws = use_context::<ServerWS>(cx);
+pub fn send_msg(msg: &str) -> Result<(), ()> {
+    let ws = use_context::<ServerWS>();
     match ws {
         Some(ServerWS(ws)) => {
             let msg: ClientMessage = msg.to_owned();
@@ -97,10 +97,10 @@ pub fn send_msg(cx: Scope, msg: &str) -> Result<(), ()> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ServerWS(WebSocket);
 
-pub fn provide_websocket(cx: Scope, url: &str) -> Result<(), JsValue> {
-    if use_context::<ServerWS>(cx).is_none() {
+pub fn provide_websocket(url: &str) -> Result<(), JsValue> {
+    if use_context::<ServerWS>().is_none() {
         let ws = WebSocket::new(url)?;
-        provide_context(cx, ServerWS(ws));
+        provide_context(ServerWS(ws));
     }
 
     Ok(())

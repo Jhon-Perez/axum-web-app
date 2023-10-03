@@ -4,8 +4,8 @@ use leptos_meta::*;
 use leptos_router::*;
 
 #[component]
-pub fn App(cx: Scope) -> impl IntoView {
-    provide_meta_context(cx);
+pub fn App() -> impl IntoView {
+    provide_meta_context();
 
     #[cfg(not(feature = "ssr"))]
     (move || {
@@ -22,16 +22,15 @@ pub fn App(cx: Scope) -> impl IntoView {
         };
         let host = match location.host() {
             Ok(host) => host,
-            Err(host) => return,
+            Err(_) => return,
         };
-        match provide_websocket(cx, format!("{protocol}//{host}/websocket").as_str()) {
-            Ok(_) => log!("Connected to {}//{}/websocket", protocol, host),
+        match provide_websocket(format!("{protocol}//{host}/websocket").as_str()) {
+            Ok(_) => logging::log!("Connected to {}//{}/websocket", protocol, host),
             Err(_) => log::error!("Failed to connect to WebSocket!"),
         };
     })();
 
     view! {
-        cx,
 
         // injects a stylesheet into the document <head>
         // id=leptos means cargo-leptos will hot-reload this stylesheet
@@ -41,17 +40,17 @@ pub fn App(cx: Scope) -> impl IntoView {
         <Title text="Welcome to Leptos"/>
 
         // content for this welcome page
-        <Router fallback=|cx| {
+        <Router fallback=|| {
             let mut outside_errors = Errors::default();
             outside_errors.insert_with_default_key(AppError::NotFound);
-            view! { cx,
+            view! {
                 <ErrorTemplate outside_errors/>
             }
-            .into_view(cx)
+            .into_view()
         }>
             <main>
                 <Routes>
-                    <Route path="" view=|cx| view! { cx, <HomePage/> }/>
+                    <Route path="" view=|| view! { <HomePage/> }/>
                 </Routes>
             </main>
         </Router>
@@ -70,16 +69,15 @@ enum WsMessage {
 }
 
 #[component]
-fn HomePage(cx: Scope) -> impl IntoView {
-    //create_ws_signal(cx);
+fn HomePage() -> impl IntoView {
     //let mut disable_button = false;
 
-    let last_message = create_ws_signal(cx);
-    let (messages, set_messages) = create_signal(cx, Vec::<(Uuid, WsMessage)>::new());
+    let last_message = create_ws_signal();
+    let (messages, set_messages) = create_signal(Vec::<(Uuid, WsMessage)>::new());
 
     // update message to me if sent by someone else (problem is that it also does that if I
     // sent the message. Make sure to only do it when someone other than me sends a message)
-    create_effect(cx, move |_| match last_message.get() {
+    create_effect(move |_| match last_message.get() {
         Some(message) => {
             set_messages.update(move |messages| {
                 (*messages).push((Uuid::new_v4(), WsMessage::Server(message)));
@@ -89,7 +87,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
     });
 
     // get input and update it here
-    let (message_input, set_message_input) = create_signal(cx, "".to_owned());
+    let (message_input, set_message_input) = create_signal("".to_owned());
 
     // send message to everyone else if sent by me
     let send_message = move |ev: SubmitEvent| {
@@ -97,7 +95,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
 
         let msg = message_input.get();
 
-        let _ = send_msg(cx, msg.as_str());
+        let _ = send_msg(msg.as_str());
         set_message_input.set("".to_owned());
 
         set_messages.update(move |messages| {
@@ -105,7 +103,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
         });
     };
 
-    let (username, set_username_input) = create_signal(cx, "".to_owned());
+    let (username, set_username_input) = create_signal("".to_owned());
 
     // send message to everyone else if sent by me
     let set_username = move |ev: SubmitEvent| {
@@ -113,11 +111,11 @@ fn HomePage(cx: Scope) -> impl IntoView {
 
         let mut msg = username.get();
 
-        let _ = send_msg(cx, msg.as_str());
-        set_username_input.set("".to_owned());
+        let _ = send_msg(msg.as_str());
+        set_username_input.set(msg.to_owned());
 
         msg.push_str(" has joined");
-        let msg = ServerMessage{sender: "Server".to_owned(), msg: msg};
+        let msg = ServerMessage{sender: "Server".to_owned(), msg};
 
         log::info!("{msg:?}");
 
@@ -127,7 +125,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
         //disable_button = true;
     };
 
-    view! { cx,
+    view! {
         <form on:submit=set_username>
             <input
                 placeholder="Username"
@@ -147,36 +145,35 @@ fn HomePage(cx: Scope) -> impl IntoView {
             <For
                 each=move || messages.get()
                 key=move |message| message.0
-                view=move |cx, (_, message)| {
-                    view! { cx,
+                children=move |(_, message)| {
+                    view! {
                         {
                             move || {
                                 let message = message.clone();
                             // check if the message was sent by me or another client then update from there
                             match message { 
-                            WsMessage::Me(msg) => view!{cx,
+                            WsMessage::Me(msg) => view!{
                                 <li class="chat-message__container chat-message__container--me">
                                 <p class="chat-message__message chat-message__message--me">{
                                     msg
                                 }</p>
                                 </li>
-                            }.into_view(cx),
+                            }.into_view(),
                             WsMessage::Server(message) => {
-                                //if username.get() == message.sender {
-                                log::info!("username: {} == sender: {} = {}", username.get(), message.sender, username.get() == message.sender);
-                                view! {cx,
-                                    <li class="chat-message__container">
-                                <p class="chat-message__sender">{move || {
-                                    let sender = &message.sender;
-                                    sender.to_owned()
-                                }}</p>
-                                <p class="chat-message__message chat-message__message--server">{move || {
-                                    let msg = &message.msg;
-                                    msg.to_owned()
-                                }}</p>
-                                </li>
-                            }//} else {view!{cx, <li>""</li>}}
-                            }.into_view(cx),
+                                if username.get() != message.sender {
+                                    view! {
+                                        <li class="chat-message__container">
+                                    <p class="chat-message__sender">{move || {
+                                        let sender = &message.sender;
+                                        sender.to_owned()
+                                    }}</p>
+                                    <p class="chat-message__message chat-message__message--server">{move || {
+                                        let msg = &message.msg;
+                                        msg.to_owned()
+                                    }}</p>
+                                    </li>
+                                }} else {view!{<li>""</li>}}
+                            }.into_view(),
                         }}}
                 }}
             />
@@ -196,7 +193,7 @@ fn HomePage(cx: Scope) -> impl IntoView {
                         }
                     />
                     // submit button
-                    <button type="submit" id="send-button" disabled=move || message_input.get() == "">
+                    <button type="submit" id="send-button" disabled=move || message_input.get() == "" || username.get() == "">
                         "send"
                     </button>
                 </div>
